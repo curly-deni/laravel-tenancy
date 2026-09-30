@@ -1,0 +1,70 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Aesis\Tenancy\Models\Tenant;
+use Aesis\Tenancy\Support\TenancyTables;
+use Aesis\Tenancy\Support\TenantRoleCatalog;
+use Spatie\Permission\PermissionRegistrar;
+
+return new class extends Migration
+{
+    /** @var array<string, list<string>> */
+    private const ROLES = [
+        'owner' => [
+            'tenant.view', 'tenant.update', 'tenant.delete', 'members.view',
+            'members.invite', 'members.update', 'members.remove', 'roles.manage',
+        ],
+        'admin' => [
+            'tenant.view', 'tenant.update', 'members.view', 'members.invite',
+            'members.update', 'members.remove', 'roles.manage',
+        ],
+        'editor' => ['tenant.view'],
+        'viewer' => ['tenant.view'],
+    ];
+
+    public function up(): void
+    {
+        $tableName = TenancyTables::get('role_templates');
+
+        Schema::create($tableName, function (Blueprint $table): void {
+            $table->id();
+            $table->string('name');
+            $table->string('guard_name');
+            $table->json('permission_names');
+            $table->timestamps();
+            $table->unique(['name', 'guard_name']);
+        });
+
+        $guard = config('auth.defaults.guard', 'web');
+        $now = now();
+
+        foreach (self::ROLES as $name => $permissionNames) {
+            DB::table($tableName)->insert([
+                'name' => $name,
+                'guard_name' => $guard,
+                'permission_names' => json_encode($permissionNames, JSON_THROW_ON_ERROR),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        Tenant::query()->orderBy('id')->chunkById(100, function ($tenants): void {
+            foreach ($tenants as $tenant) {
+                TenantRoleCatalog::createForTenant($tenant);
+            }
+        });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    public function down(): void
+    {
+        TenantRoleCatalog::removeUnusedRoles();
+        Schema::dropIfExists(TenancyTables::get('role_templates'));
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+};

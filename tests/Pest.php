@@ -1,5 +1,5 @@
 <?php
 
-use VendorName\Skeleton\Tests\TestCase;
+use Aesis\Tenancy\Tests\TestCase;
 
-uses(TestCase::class)->in(__DIR__);
+pest()->extend(TestCase::class)->in('Feature');

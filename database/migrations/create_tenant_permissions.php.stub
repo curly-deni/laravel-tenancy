@@ -1,0 +1,43 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Spatie\Permission\PermissionRegistrar;
+use Spatie\Permission\Support\Config as PermissionConfig;
+
+return new class extends Migration
+{
+    private const PERMISSIONS = [
+        'tenant.view', 'tenant.update', 'tenant.delete', 'members.view',
+        'members.invite', 'members.update', 'members.remove', 'roles.manage',
+    ];
+
+    public function up(): void
+    {
+        $permissionModel = PermissionConfig::permissionModel();
+        $guard = config('auth.defaults.guard', 'web');
+
+        foreach (self::PERMISSIONS as $name) {
+            $permissionModel::findOrCreate($name, $guard);
+        }
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    public function down(): void
+    {
+        $permissionModel = PermissionConfig::permissionModel();
+        $guard = config('auth.defaults.guard', 'web');
+
+        $permissionModel::query()
+            ->where('guard_name', $guard)
+            ->whereIn('name', self::PERMISSIONS)
+            ->get()
+            ->each(function ($permission): void {
+                if (! $permission->roles()->exists() && ! $permission->users()->exists()) {
+                    $permission->delete();
+                }
+            });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+};
